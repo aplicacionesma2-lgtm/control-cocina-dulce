@@ -18,7 +18,6 @@ st.set_page_config(
 
 
 # --- CONEXIÓN A GOOGLE SHEETS ---
-# --- CONEXIÓN A GOOGLE SHEETS ---
 @st.cache_resource
 def conectar_google_sheets():
     try:
@@ -32,11 +31,8 @@ def conectar_google_sheets():
 
             if "private_key" in creds_dict:
                 pk = str(creds_dict["private_key"])
-                # 1. Quitar comillas adicionales al inicio o final si existen
                 pk = pk.strip().strip('"').strip("'")
-                # 2. Convertir texto '\\n' o '\n' literal a saltos de línea reales
                 pk = pk.replace("\\n", "\n")
-                # 3. Re-asegurar que la clave mantenga sus cabeceras PEM intactas
                 creds_dict["private_key"] = pk
 
             creds = Credentials.from_service_account_info(
@@ -182,159 +178,325 @@ lista_productos, lista_equipos, lista_responsables = cargar_catalogos()
 st.title("📋 FORMATO CONTROL DE PROCESO COCINA DULCE")
 st.markdown("---")
 
-with st.form("form_control_proceso", clear_on_submit=False):
-    st.subheader("1. Información General del Proceso")
-    col1, col2, col3, col4 = st.columns(4)
+tab1, tab2 = st.tabs(["📝 Nuevo Registro", "⚙️ Gestionar / Modificar Registros"])
 
-    with col1:
-        fecha_p = st.date_input(
-            "F.P (Fecha de Producción)", value=datetime.date.today()
-        )
-    with col2:
-        lote = st.text_input(
-            "LOTE", placeholder="Ej. L-20260901", key="input_lote"
-        )
-    with col3:
-        batch = st.text_input("BATCH", placeholder="Ej. B-01", key="input_batch")
-    with col4:
-        responsable_sel = st.selectbox(
-            "RESPONSABLE", options=lista_responsables
-        )
-        if responsable_sel == "OTRO":
-            responsable_text = st.text_input(
-                "Especifique Responsable", placeholder="Nombre completo"
+# ---------------------------------------------------------
+# PESTAÑA 1: NUEVO REGISTRO
+# ---------------------------------------------------------
+with tab1:
+    with st.form("form_control_proceso", clear_on_submit=False):
+        st.subheader("1. Información General del Proceso")
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            fecha_p = st.date_input(
+                "F.P (Fecha de Producción)", value=datetime.date.today()
             )
-            responsable_final = responsable_text
+        with col2:
+            lote = st.text_input(
+                "LOTE", placeholder="Ej. L-20260901", key="input_lote"
+            )
+        with col3:
+            batch = st.text_input(
+                "BATCH", placeholder="Ej. B-01", key="input_batch"
+            )
+        with col4:
+            responsable_sel = st.selectbox(
+                "RESPONSABLE", options=lista_responsables
+            )
+            if responsable_sel == "OTRO":
+                responsable_text = st.text_input(
+                    "Especifique Responsable", placeholder="Nombre completo"
+                )
+                responsable_final = responsable_text
+            else:
+                responsable_final = responsable_sel
+
+        st.subheader("2. Selección de Producto, Equipo y Parámetros Iniciales")
+        col5, col6, col_brix = st.columns([2, 2, 1])
+
+        with col5:
+            producto = st.selectbox("PRODUCTO", options=lista_productos)
+        with col6:
+            equipo_sel = st.selectbox(
+                "EQUIPO UTILIZADO", options=lista_equipos
+            )
+            if equipo_sel == "OTRO":
+                equipo_text = st.text_input(
+                    "Especifique Equipo", placeholder="Nombre del equipo"
+                )
+                equipo_final = equipo_text
+            else:
+                equipo_final = equipo_sel
+        with col_brix:
+            brix = st.text_input(
+                "BRIX (°Bx)", placeholder="Ej. 65.5", key="input_brix"
+            )
+
+        st.subheader("3. Parámetros de Control y Tiempos")
+        col7, col8, col9 = st.columns(3)
+
+        with col7:
+            hora_inicio = st.time_input(
+                "HORA INICIO", value=datetime.time(8, 0)
+            )
+        with col8:
+            hora_termino = st.time_input(
+                "HORA TÉRMINO", value=datetime.time(8, 15)
+            )
+
+        dt_inicio = datetime.datetime.combine(
+            datetime.date.today(), hora_inicio
+        )
+        dt_termino = datetime.datetime.combine(
+            datetime.date.today(), hora_termino
+        )
+
+        if dt_termino < dt_inicio:
+            dt_termino += datetime.timedelta(days=1)
+
+        minutos_totales = int((dt_termino - dt_inicio).total_seconds() / 60)
+        tiempo_calculado = f"{minutos_totales} min"
+
+        with col9:
+            tiempo_proceso = st.text_input(
+                "TIEMPO (COCCIÓN/BATIDO/ HORNEADO)",
+                value=tiempo_calculado,
+                disabled=True,
+            )
+
+        col10, col11 = st.columns(2)
+
+        with col10:
+            temp_equipo = st.number_input(
+                "TEMPERATURA  EQUIPO (°C)", value=0.0, step=0.5, format="%.1f"
+            )
+        with col11:
+            vel_agitador = st.text_input(
+                "VELOCIDAD DEL AGITADOR (hz)/ BATIDORA/OTROS",
+                placeholder="Ej. 50 Hz / V2",
+            )
+
+        st.subheader("4. Conformidad y Observaciones")
+        col12, col13 = st.columns([1, 2])
+
+        with col12:
+            estado_obs = st.radio(
+                "ESTADO",
+                options=["CONFORME", "NO CONFORME", "OTRO (Texto Libre)"],
+            )
+
+        with col13:
+            if estado_obs == "OTRO (Texto Libre)":
+                obs_detalle = st.text_area(
+                    "OBSERVACIÓN",
+                    placeholder="Escriba aquí la observación personalizada...",
+                )
+                observacion_final = obs_detalle
+            else:
+                obs_adicional = st.text_input(
+                    "Detalle / Comentario adicional (Opcional)",
+                    placeholder="Escriba detalles si aplica...",
+                )
+                observacion_final = (
+                    f"{estado_obs} - {obs_adicional}".strip(" -")
+                    if obs_adicional
+                    else estado_obs
+                )
+
+        st.markdown("---")
+        btn_guardar = st.form_submit_button(
+            "💾 Guardar Registro en Google Sheets", use_container_width=True
+        )
+
+    if btn_guardar:
+        if sheet is not None:
+            try:
+                nueva_fila = [
+                    producto,
+                    fecha_p.strftime("%Y-%m-%d"),
+                    lote,
+                    batch,
+                    equipo_final,
+                    brix,
+                    hora_inicio.strftime("%H:%M"),
+                    float(temp_equipo),
+                    tiempo_calculado,
+                    vel_agitador,
+                    hora_termino.strftime("%H:%M"),
+                    responsable_final,
+                    observacion_final,
+                ]
+
+                registros_existentes = sheet.get_all_values()
+                siguiente_fila = len(registros_existentes) + 1
+
+                rango_insercion = f"A{siguiente_fila}:M{siguiente_fila}"
+                sheet.update(
+                    range_name=rango_insercion,
+                    values=[nueva_fila],
+                    value_input_option="USER_ENTERED",
+                )
+
+                st.success(
+                    f"✅ ¡Registro guardado exitosamente en la fila {siguiente_fila} de Google Sheets!"
+                )
+                st.cache_data.clear()
+            except Exception as err:
+                st.error(f"Error al registrar en la hoja: {err}")
         else:
-            responsable_final = responsable_sel
+            st.error("No se pudo conectar a Google Sheets.")
 
-    st.subheader("2. Selección de Producto, Equipo y Parámetros Iniciales")
-    col5, col6, col_brix = st.columns([2, 2, 1])
-
-    with col5:
-        producto = st.selectbox("PRODUCTO", options=lista_productos)
-    with col6:
-        equipo_sel = st.selectbox("EQUIPO UTILIZADO", options=lista_equipos)
-        if equipo_sel == "OTRO":
-            equipo_text = st.text_input(
-                "Especifique Equipo", placeholder="Nombre del equipo"
-            )
-            equipo_final = equipo_text
-        else:
-            equipo_final = equipo_sel
-    with col_brix:
-        brix = st.text_input(
-            "BRIX (°Bx)", placeholder="Ej. 65.5", key="input_brix"
-        )
-
-    st.subheader("3. Parámetros de Control y Tiempos")
-    col7, col8, col9 = st.columns(3)
-
-    with col7:
-        hora_inicio = st.time_input("HORA INICIO", value=datetime.time(8, 0))
-    with col8:
-        hora_termino = st.time_input("HORA TÉRMINO", value=datetime.time(8, 15))
-
-    dt_inicio = datetime.datetime.combine(datetime.date.today(), hora_inicio)
-    dt_termino = datetime.datetime.combine(datetime.date.today(), hora_termino)
-
-    if dt_termino < dt_inicio:
-        dt_termino += datetime.timedelta(days=1)
-
-    minutos_totales = int((dt_termino - dt_inicio).total_seconds() / 60)
-    tiempo_calculado = f"{minutos_totales} min"
-
-    with col9:
-        tiempo_proceso = st.text_input(
-            "TIEMPO (COCCIÓN/BATIDO/ HORNEADO)",
-            value=tiempo_calculado,
-            disabled=True,
-        )
-
-    col10, col11 = st.columns(2)
-
-    with col10:
-        temp_equipo = st.number_input(
-            "TEMPERATURA  EQUIPO (°C)", value=0.0, step=0.5, format="%.1f"
-        )
-    with col11:
-        vel_agitador = st.text_input(
-            "VELOCIDAD DEL AGITADOR (hz)/ BATIDORA/OTROS",
-            placeholder="Ej. 50 Hz / V2",
-        )
-
-    st.subheader("4. Conformidad y Observaciones")
-    col12, col13 = st.columns([1, 2])
-
-    with col12:
-        estado_obs = st.radio(
-            "ESTADO",
-            options=["CONFORME", "NO CONFORME", "OTRO (Texto Libre)"],
-        )
-
-    with col13:
-        if estado_obs == "OTRO (Texto Libre)":
-            obs_detalle = st.text_area(
-                "OBSERVACIÓN",
-                placeholder="Escriba aquí la observación personalizada...",
-            )
-            observacion_final = obs_detalle
-        else:
-            obs_adicional = st.text_input(
-                "Detalle / Comentario adicional (Opcional)",
-                placeholder="Escriba detalles si aplica...",
-            )
-            observacion_final = (
-                f"{estado_obs} - {obs_adicional}".strip(" -")
-                if obs_adicional
-                else estado_obs
-            )
-
-    st.markdown("---")
-    btn_guardar = st.form_submit_button(
-        "💾 Guardar Registro en Google Sheets", use_container_width=True
-    )
-
-if btn_guardar:
+# ---------------------------------------------------------
+# PESTAÑA 2: MODIFICAR / ELIMINAR REGISTROS
+# ---------------------------------------------------------
+with tab2:
+    st.subheader("✏️ Editar o Eliminar un Registro Existente")
     if sheet is not None:
         try:
-            nueva_fila = [
-                producto,
-                fecha_p.strftime("%Y-%m-%d"),
-                lote,
-                batch,
-                equipo_final,
-                brix,
-                hora_inicio.strftime("%H:%M"),
-                float(temp_equipo),
-                tiempo_calculado,
-                vel_agitador,
-                hora_termino.strftime("%H:%M"),
-                responsable_final,
-                observacion_final,
-            ]
+            raw_data = sheet.get_all_values()
+            if len(raw_data) > 1:
+                headers = raw_data[0]
+                rows = raw_data[1:]
 
-            registros_existentes = sheet.get_all_values()
-            siguiente_fila = len(registros_existentes) + 1
+                df_edit = pd.DataFrame(rows, columns=headers)
+                # Agregar columna de índice de fila real de Google Sheets (comienza en 2)
+                df_edit["Fila GS"] = list(range(2, len(rows) + 2))
 
-            rango_insercion = f"A{siguiente_fila}:M{siguiente_fila}"
-            sheet.update(
-                range_name=rango_insercion,
-                values=[nueva_fila],
-                value_input_option="USER_ENTERED",
-            )
+                # Selección del registro a modificar/eliminar
+                opciones_registro = [
+                    f"Fila {r['Fila GS']} | {r.get('PRODUCTO', '')} | Lote: {r.get('LOTE', '')} | FP: {r.get('F.P', '')}"
+                    for _, r in df_edit.iterrows()
+                ]
 
-            st.success(
-                f"✅ ¡Registro guardado exitosamente en la fila {siguiente_fila} de Google Sheets!"
-            )
-            st.cache_data.clear()
-        except Exception as err:
-            st.error(f"Error al registrar en la hoja: {err}")
-    else:
-        st.error("No se pudo conectar a Google Sheets.")
+                registro_sel = st.selectbox(
+                    "Seleccione el registro que desea modificar o eliminar:",
+                    options=opciones_registro,
+                )
+
+                idx_seleccionado = opciones_registro.index(registro_sel)
+                fila_gs = df_edit.iloc[idx_seleccionado]["Fila GS"]
+                datos_fila = df_edit.iloc[idx_seleccionado].to_dict()
+
+                col_mod, col_del = st.columns(2)
+
+                # --- ACCIÓN 1: MODIFICAR ---
+                with col_mod:
+                    with st.expander(
+                        f"📝 Editar datos de la Fila {fila_gs}", expanded=True
+                    ):
+                        with st.form(f"form_editar_{fila_gs}"):
+                            e_prod = st.text_input(
+                                "PRODUCTO", value=datos_fila.get("PRODUCTO", "")
+                            )
+                            e_fp = st.text_input(
+                                "F.P", value=datos_fila.get("F.P", "")
+                            )
+                            e_lote = st.text_input(
+                                "LOTE", value=datos_fila.get("LOTE", "")
+                            )
+                            e_batch = st.text_input(
+                                "BATCH", value=datos_fila.get("BATCH", "")
+                            )
+                            e_equipo = st.text_input(
+                                "EQUIPO UTILIZADO",
+                                value=datos_fila.get("EQUIPO UTILIZADO", ""),
+                            )
+                            e_brix = st.text_input(
+                                "BRIX (°Bx)", value=datos_fila.get("BRIX (°Bx)", "")
+                            )
+                            e_h_ini = st.text_input(
+                                "HORA INICIO",
+                                value=datos_fila.get("HORA INICIO", ""),
+                            )
+                            e_temp = st.text_input(
+                                "TEMPERATURA EQUIPO (°C)",
+                                value=datos_fila.get(
+                                    "TEMPERATURA EQUIPO (°C)", ""
+                                ),
+                            )
+                            e_tiempo = st.text_input(
+                                "TIEMPO", value=datos_fila.get("TIEMPO", "")
+                            )
+                            e_vel = st.text_input(
+                                "VELOCIDAD AGITADOR",
+                                value=datos_fila.get(
+                                    "VELOCIDAD AGITADOR/ BATIDORA", ""
+                                ),
+                            )
+                            e_h_term = st.text_input(
+                                "HORA TÉRMINO",
+                                value=datos_fila.get("HORA TÉRMINO", ""),
+                            )
+                            e_resp = st.text_input(
+                                "RESPONSABLE",
+                                value=datos_fila.get("RESPONSABLE", ""),
+                            )
+                            e_obs = st.text_area(
+                                "OBSERVACIÓN",
+                                value=datos_fila.get("OBSERVACIÓN", ""),
+                            )
+
+                            btn_actualizar = st.form_submit_button(
+                                "💾 Actualizar Fila en Google Sheets"
+                            )
+
+                        if btn_actualizar:
+                            valores_actualizados = [
+                                e_prod,
+                                e_fp,
+                                e_lote,
+                                e_batch,
+                                e_equipo,
+                                e_brix,
+                                e_h_ini,
+                                e_temp,
+                                e_tiempo,
+                                e_vel,
+                                e_h_term,
+                                e_resp,
+                                e_obs,
+                            ]
+                            sheet.update(
+                                range_name=f"A{fila_gs}:M{fila_gs}",
+                                values=[valores_actualizados],
+                                value_input_option="USER_ENTERED",
+                            )
+                            st.success(
+                                f"✅ ¡Fila {fila_gs} actualizada correctamente!"
+                            )
+                            st.cache_data.clear()
+                            st.rerun()
+
+                # --- ACCIÓN 2: ELIMINAR ---
+                with col_del:
+                    with st.expander(
+                        f"🗑️ Eliminar Fila {fila_gs}", expanded=True
+                    ):
+                        st.warning(
+                            f"⚠️ ¿Estás seguro de que deseas eliminar permanentemente el registro de la fila {fila_gs}?"
+                        )
+                        btn_eliminar = st.button(
+                            f"❌ Sí, Eliminar Fila {fila_gs}",
+                            type="primary",
+                            key=f"btn_del_{fila_gs}",
+                        )
+
+                        if btn_eliminar:
+                            sheet.delete_rows(int(fila_gs))
+                            st.success(
+                                f"🗑️ ¡Fila {fila_gs} eliminada correctamente!"
+                            )
+                            st.cache_data.clear()
+                            st.rerun()
+
+            else:
+                st.info("No hay registros suficientes para modificar.")
+        except Exception as e:
+            st.error(f"Error al cargar registros para edición: {e}")
 
 
-# Generar Excel con Formato MA-FR-109 y Logo
+# --- GENERACIÓN DE EXCEL ---
 def generar_excel_formateado(df_datos):
     wb = openpyxl.Workbook()
     ws = wb.active
