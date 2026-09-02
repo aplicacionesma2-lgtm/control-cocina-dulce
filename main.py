@@ -18,6 +18,7 @@ st.set_page_config(
 
 
 # --- CONEXIÓN A GOOGLE SHEETS ---
+# --- CONEXIÓN A GOOGLE SHEETS ---
 @st.cache_resource
 def conectar_google_sheets():
     try:
@@ -30,12 +31,12 @@ def conectar_google_sheets():
             creds_dict = dict(st.secrets["gcp_service_account"])
 
             if "private_key" in creds_dict:
-                pk = str(creds_dict["private_key"]).strip()
-                if (pk.startswith('"') and pk.endswith('"')) or (
-                    pk.startswith("'") and pk.endswith("'")
-                ):
-                    pk = pk[1:-1]
+                pk = str(creds_dict["private_key"])
+                # 1. Quitar comillas adicionales al inicio o final si existen
+                pk = pk.strip().strip('"').strip("'")
+                # 2. Convertir texto '\\n' o '\n' literal a saltos de línea reales
                 pk = pk.replace("\\n", "\n")
+                # 3. Re-asegurar que la clave mantenga sus cabeceras PEM intactas
                 creds_dict["private_key"] = pk
 
             creds = Credentials.from_service_account_info(
