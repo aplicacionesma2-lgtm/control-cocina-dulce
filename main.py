@@ -8,6 +8,7 @@ from openpyxl.drawing.image import Image as OpenPyxlImage
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 import pandas as pd
 from PIL import Image as PILImage
+import requests
 import streamlit as st
 
 st.set_page_config(
@@ -51,6 +52,26 @@ def conectar_google_sheets():
     except Exception as e:
         st.error(f"Error al conectar con Google Sheets: {e}")
         return None
+
+
+# --- FUNCIÓN PARA SUBIR IMÁGENES A IMGBB ---
+def subir_imagen_imgbb(archivo_imagen):
+    if archivo_imagen is None:
+        return "Sin foto"
+    try:
+        if "IMGBB_API_KEY" in st.secrets:
+            api_key = st.secrets["IMGBB_API_KEY"]
+            url = "https://api.imgbb.com/1/upload"
+            payload = {"key": api_key}
+            files = {"image": archivo_imagen.getvalue()}
+            response = requests.post(url, data=payload, files=files)
+            res_json = response.json()
+            if res_json.get("success"):
+                return res_json["data"]["url"]
+        return "Sin API Key de ImgBB"
+    except Exception as e:
+        st.error(f"Error al subir la imagen: {e}")
+        return "Error subida"
 
 
 sheet = conectar_google_sheets()
@@ -304,6 +325,32 @@ with tab1:
                     else estado_obs
                 )
 
+        st.subheader("5. Condiciones del área de trabajo")
+        col14, col15 = st.columns([1, 2])
+
+        with col14:
+            estado_area = st.radio(
+                "ESTADO ÁREA",
+                options=["CONFORME", "NO CONFORME"],
+                key="radio_estado_area",
+            )
+
+        with col15:
+            obs_area = st.text_input(
+                "Detalle / Comentario adicional (Opcional)",
+                placeholder="Escriba detalles si aplica...",
+                key="input_obs_area",
+            )
+
+        condicion_area_final = (
+            f"{estado_area} - {obs_area}".strip(" -") if obs_area else estado_area
+        )
+
+        st.subheader("6. Evidencia Fotográfica (Opcional)")
+        foto_subida = st.file_uploader(
+            "Adjuntar Imagen / Foto de Evidencia", type=["png", "jpg", "jpeg"]
+        )
+
         st.markdown("---")
         btn_guardar = st.form_submit_button(
             "💾 Guardar Registro en Google Sheets", use_container_width=True
@@ -312,6 +359,8 @@ with tab1:
     if btn_guardar:
         if sheet is not None:
             try:
+                url_foto = subir_imagen_imgbb(foto_subida)
+
                 nueva_fila = [
                     producto,
                     fecha_p.strftime("%Y-%m-%d"),
@@ -326,12 +375,15 @@ with tab1:
                     hora_termino.strftime("%H:%M"),
                     responsable_final,
                     observacion_final,
+                    condicion_area_final,
+                    url_foto,
                 ]
 
                 registros_existentes = sheet.get_all_values()
                 siguiente_fila = len(registros_existentes) + 1
 
-                rango_insercion = f"A{siguiente_fila}:M{siguiente_fila}"
+                # Determinar rango dinámico hasta la columna O (15 columnas)
+                rango_insercion = f"A{siguiente_fila}:O{siguiente_fila}"
                 sheet.update(
                     range_name=rango_insercion,
                     values=[nueva_fila],
@@ -360,10 +412,8 @@ with tab2:
                 rows = raw_data[1:]
 
                 df_edit = pd.DataFrame(rows, columns=headers)
-                # Agregar columna de índice de fila real de Google Sheets (comienza en 2)
                 df_edit["Fila GS"] = list(range(2, len(rows) + 2))
 
-                # Selección del registro a modificar/eliminar
                 opciones_registro = [
                     f"Fila {r['Fila GS']} | {r.get('PRODUCTO', '')} | Lote: {r.get('LOTE', '')} | FP: {r.get('F.P', '')}"
                     for _, r in df_edit.iterrows()
@@ -436,6 +486,16 @@ with tab2:
                                 "OBSERVACIÓN",
                                 value=datos_fila.get("OBSERVACIÓN", ""),
                             )
+                            e_cond_area = st.text_input(
+                                "CONDICIONES ÁREA TRABAJO",
+                                value=datos_fila.get(
+                                    "CONDICIONES DEL AREA DE TRABAJO", ""
+                                ),
+                            )
+                            e_foto = st.text_input(
+                                "URL FOTO / EVIDENCIA",
+                                value=datos_fila.get("FOTO", ""),
+                            )
 
                             btn_actualizar = st.form_submit_button(
                                 "💾 Actualizar Fila en Google Sheets"
@@ -456,9 +516,11 @@ with tab2:
                                 e_h_term,
                                 e_resp,
                                 e_obs,
+                                e_cond_area,
+                                e_foto,
                             ]
                             sheet.update(
-                                range_name=f"A{fila_gs}:M{fila_gs}",
+                                range_name=f"A{fila_gs}:O{fila_gs}",
                                 values=[valores_actualizados],
                                 value_input_option="USER_ENTERED",
                             )
@@ -515,16 +577,16 @@ def generar_excel_formateado(df_datos):
     font_title = Font(name="Calibri", size=13, bold=True)
 
     ws.merge_cells("A1:B3")
-    ws.merge_cells("C1:K3")
-    ws.merge_cells("L1:M3")
+    ws.merge_cells("C1:M3")
+    ws.merge_cells("N1:O3")
 
     ws["C1"] = "FORMATO CONTROL DE PROCESO COCINA DULCE"
     ws["C1"].font = font_title
     ws["C1"].alignment = Alignment(horizontal="center", vertical="center")
 
-    ws["L1"] = "MA-FR- 109"
-    ws["L1"].font = font_bold
-    ws["L1"].alignment = Alignment(horizontal="center", vertical="center")
+    ws["N1"] = "MA-FR- 109"
+    ws["N1"].font = font_bold
+    ws["N1"].alignment = Alignment(horizontal="center", vertical="center")
 
     logo_path = None
     for posible_logo in [
@@ -558,7 +620,7 @@ def generar_excel_formateado(df_datos):
         ws["A1"] = "MA"
         ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
 
-    for row in ws["A1:M3"]:
+    for row in ws["A1:O3"]:
         for cell in row:
             cell.border = thin_border
 
@@ -597,7 +659,15 @@ if sheet is not None:
         data = sheet.get_all_records()
         if data:
             df_registros = pd.DataFrame(data)
-            st.dataframe(df_registros, use_container_width=True)
+            st.dataframe(
+                df_registros,
+                column_config={
+                    "FOTO": st.column_config.LinkColumn(
+                        "Foto Evidencia", display_text="Ver Foto 📷"
+                    )
+                },
+                use_container_width=True,
+            )
 
             excel_data = generar_excel_formateado(df_registros)
 
