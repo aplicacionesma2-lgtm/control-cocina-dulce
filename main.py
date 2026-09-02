@@ -501,14 +501,19 @@ with tab2:
                                     "TEMPERATURA EQUIPO (°C)", ""
                                 ),
                             )
+                            # --- REEMPLAZAR EN TAB 2 DENTRO DEL FORMULARIO DE EDICIÓN ---
+
                             e_tiempo = st.text_input(
-                                "TIEMPO", value=datos_fila.get("TIEMPO", "")
+                            "TIEMPO",
+                            value=datos_fila.get("TIEMPO", datos_fila.get("TIEMPO (COCCIÓN/BATIDO/ HORNEADO)", ""))
                             )
+
                             e_vel = st.text_input(
-                                "VELOCIDAD AGITADOR",
-                                value=datos_fila.get(
-                                    "VELOCIDAD AGITADOR/ BATIDORA", ""
-                                ),
+                            "VELOCIDAD AGITADOR",
+                             value=datos_fila.get(
+                            "VELOCIDAD DEL AGITADOR (hz)/ BATIDORA/OTROS",
+                            datos_fila.get("VELOCIDAD AGITADOR/ BATIDORA", datos_fila.get("VELOCIDAD AGITADOR", ""))
+                            )
                             )
                             e_h_term = st.text_input(
                                 "HORA TÉRMINO",
