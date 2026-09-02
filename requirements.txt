@@ -1,3 +1,6 @@
 streamlit
 pandas
 openpyxl
+Pillow
+gspread
+oauth2client
