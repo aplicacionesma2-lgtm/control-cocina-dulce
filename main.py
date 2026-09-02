@@ -1,6 +1,8 @@
 import datetime
 import io
 import os
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 import openpyxl
 from openpyxl.drawing.image import Image as OpenPyxlImage
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -14,9 +16,32 @@ st.set_page_config(
     layout="wide",
 )
 
-# Inicializar historial en la memoria local de la sesión
-if "historial" not in st.session_state:
-    st.session_state.historial = []
+# --- CONEXIÓN A GOOGLE SHEETS ---
+@st.cache_resource
+def conectar_google_sheets():
+    try:
+        scope = [
+            "https://spreadsheets.google.com/feeds",
+            "https://www.googleapis.com/auth/drive",
+        ]
+        if "gcp_service_account" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(
+                creds_dict, scope
+            )
+            client = gspread.authorize(creds)
+            spreadsheet_id = st.secrets["SPREADSHEET_ID"]
+            sheet = client.open_by_key(spreadsheet_id).sheet1
+            return sheet
+        else:
+            st.error("No se encontraron las credenciales en st.secrets.")
+            return None
+    except Exception as e:
+        st.error(f"Error al conectar con Google Sheets: {e}")
+        return None
+
+
+sheet = conectar_google_sheets()
 
 FILE_PATH = "CONTROL PROCESOS COCINA DULCE.xlsx"
 
@@ -251,27 +276,48 @@ with st.form("form_control_proceso", clear_on_submit=False):
 
     st.markdown("---")
     btn_guardar = st.form_submit_button(
-        "💾 Guardar Registro Local", use_container_width=True
+        "💾 Guardar Registro en Google Sheets", use_container_width=True
     )
 
 if btn_guardar:
-    nuevo_registro = {
-        "PRODUCTO": producto,
-        "F.P": fecha_p.strftime("%Y-%m-%d"),
-        "LOTE": lote,
-        "BATCH": batch,
-        "EQUIPO UTILIZADO": equipo_final,
-        "BRIX (°Bx)": brix,
-        "HORA INICIO": hora_inicio.strftime("%H:%M"),
-        "TEMPERATURA  EQUIPO (°C)": float(temp_equipo),
-        "TIEMPO (COCCIÓN/BATIDO/ HORNEADO)": tiempo_calculado,
-        "VELOCIDAD DEL AGITADOR (hz)/ BATIDORA/OTROS": vel_agitador,
-        "HORA TÉRMINO": hora_termino.strftime("%H:%M"),
-        "RESPONSABLE": responsable_final,
-        "OBSERVACIÓN": observacion_final,
-    }
-    st.session_state.historial.append(nuevo_registro)
-    st.success("✅ Registro guardado en la sesión local.")
+    if sheet is not None:
+        try:
+            nueva_fila = [
+                producto,
+                fecha_p.strftime("%Y-%m-%d"),
+                lote,
+                batch,
+                equipo_final,
+                brix,
+                hora_inicio.strftime("%H:%M"),
+                float(temp_equipo),
+                tiempo_calculado,
+                vel_agitador,
+                hora_termino.strftime("%H:%M"),
+                responsable_final,
+                observacion_final,
+            ]
+
+            # 1. Obtener todas las filas con contenido real
+            registros_existentes = sheet.get_all_values()
+            siguiente_fila = len(registros_existentes) + 1
+
+            # 2. Insertar exactamente en el rango de la siguiente fila libre (A:M)
+            rango_insercion = f"A{siguiente_fila}:M{siguiente_fila}"
+            sheet.update(
+                range_name=rango_insercion,
+                values=[nueva_fila],
+                value_input_option="USER_ENTERED",
+            )
+
+            st.success(
+                f"✅ ¡Registro guardado exitosamente en la fila {siguiente_fila} de Google Sheets!"
+            )
+            st.cache_data.clear()
+        except Exception as err:
+            st.error(f"Error al registrar en la hoja: {err}")
+    else:
+        st.error("No se pudo conectar a Google Sheets.")
 
 
 # Generar Excel con Formato MA-FR-109 y Logo
@@ -292,12 +338,10 @@ def generar_excel_formateado(df_datos):
     font_bold = Font(name="Calibri", size=11, bold=True)
     font_title = Font(name="Calibri", size=13, bold=True)
 
-    # Combinación de Celdas de la Cabecera
     ws.merge_cells("A1:B3")
     ws.merge_cells("C1:K3")
     ws.merge_cells("L1:M3")
 
-    # Título y Código MA-FR-109
     ws["C1"] = "FORMATO CONTROL DE PROCESO COCINA DULCE"
     ws["C1"].font = font_title
     ws["C1"].alignment = Alignment(horizontal="center", vertical="center")
@@ -306,7 +350,6 @@ def generar_excel_formateado(df_datos):
     ws["L1"].font = font_bold
     ws["L1"].alignment = Alignment(horizontal="center", vertical="center")
 
-    # Buscar logo en la carpeta local (incluye formato .jfif)
     logo_path = None
     for posible_logo in [
         "logo.jfif",
@@ -324,7 +367,7 @@ def generar_excel_formateado(df_datos):
         try:
             img = PILImage.open(logo_path).convert("RGB")
             img.thumbnail((110, 50))
-            img_temp_path = "temp_logo_local.png"
+            img_temp_path = "temp_logo.png"
             img.save(img_temp_path, "PNG")
 
             excel_img = OpenPyxlImage(img_temp_path)
@@ -339,12 +382,10 @@ def generar_excel_formateado(df_datos):
         ws["A1"] = "MA"
         ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
 
-    # Aplicar Bordes a la Cabecera
     for row in ws["A1:M3"]:
         for cell in row:
             cell.border = thin_border
 
-    # Encabezados de Tabla (Fila 5)
     headers = list(df_datos.columns)
     for col_idx, header in enumerate(headers, start=1):
         cell = ws.cell(row=5, column=col_idx, value=header)
@@ -355,14 +396,12 @@ def generar_excel_formateado(df_datos):
         )
         cell.border = thin_border
 
-    # Escribir Datos
     for row_idx, row_data in enumerate(df_datos.values, start=6):
         for col_idx, value in enumerate(row_data, start=1):
             cell = ws.cell(row=row_idx, column=col_idx, value=value)
             cell.alignment = Alignment(horizontal="center", vertical="center")
             cell.border = thin_border
 
-    # Autoajustar ancho de columnas
     for col in ws.columns:
         max_len = max(len(str(cell.value or "")) for cell in col)
         col_letter = openpyxl.utils.get_column_letter(col[0].column)
@@ -375,22 +414,25 @@ def generar_excel_formateado(df_datos):
 
 
 st.markdown("---")
-st.subheader("📊 Historial de Registros Local")
+st.subheader("📊 Historial de Registros (Google Sheets)")
 
-if st.session_state.historial:
-    df_historial = pd.DataFrame(st.session_state.historial)
-    st.dataframe(df_historial, use_container_width=True)
+if sheet is not None:
+    try:
+        data = sheet.get_all_records()
+        if data:
+            df_registros = pd.DataFrame(data)
+            st.dataframe(df_registros, use_container_width=True)
 
-    excel_data = generar_excel_formateado(df_historial)
+            excel_data = generar_excel_formateado(df_registros)
 
-    st.download_button(
-        label="📥 Descargar Excel Formateado (MA-FR-109 + Logo)",
-        data=excel_data,
-        file_name=f"Control_Cocina_Dulce_MA-FR-109_{datetime.date.today()}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
-    )
-else:
-    st.info(
-        "Ingresa datos en el formulario y haz clic en 'Guardar Registro Local' para poder probar la descarga del Excel formateado."
-    )
+            st.download_button(
+                label="📥 Descargar Historial Formateado (Excel MA-FR-109)",
+                data=excel_data,
+                file_name=f"Control_Cocina_Dulce_MA-FR-109_{datetime.date.today()}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+        else:
+            st.info("La hoja de Google Sheets está vacía por el momento.")
+    except Exception as e:
+        st.warning(f"No se pudieron cargar los registros: {e}")
