@@ -9,6 +9,8 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 import pandas as pd
 from PIL import Image as PILImage
 import streamlit as st
+from google.oauth2.service_account import Credentials  # <--- IMPORTANTE
+import streamlit as st
 
 st.set_page_config(
     page_title="Control de Proceso - Cocina Dulce",
