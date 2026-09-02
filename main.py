@@ -16,6 +16,7 @@ st.set_page_config(
     layout="wide",
 )
 
+
 # --- CONEXIÓN A GOOGLE SHEETS ---
 @st.cache_resource
 def conectar_google_sheets():
@@ -25,7 +26,15 @@ def conectar_google_sheets():
             "https://www.googleapis.com/auth/drive",
         ]
         if "gcp_service_account" in st.secrets:
+            # Convertir los secretos a diccionario
             creds_dict = dict(st.secrets["gcp_service_account"])
+
+            # Formatear la private_key para corregir saltos de línea
+            if "private_key" in creds_dict:
+                creds_dict["private_key"] = creds_dict[
+                    "private_key"
+                ].replace("\\n", "\n")
+
             creds = ServiceAccountCredentials.from_json_keyfile_dict(
                 creds_dict, scope
             )
@@ -298,11 +307,11 @@ if btn_guardar:
                 observacion_final,
             ]
 
-            # 1. Obtener todas las filas con contenido real
+            # 1. Obtener todas las filas con contenido real para calcular la posición
             registros_existentes = sheet.get_all_values()
             siguiente_fila = len(registros_existentes) + 1
 
-            # 2. Insertar exactamente en el rango de la siguiente fila libre (A:M)
+            # 2. Insertar directamente en el rango de la siguiente fila
             rango_insercion = f"A{siguiente_fila}:M{siguiente_fila}"
             sheet.update(
                 range_name=rango_insercion,
