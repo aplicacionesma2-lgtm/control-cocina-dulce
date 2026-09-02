@@ -18,33 +18,56 @@ st.set_page_config(
 
 
 # --- CONEXIÓN A GOOGLE SHEETS ---
+# --- CONEXIÓN A GOOGLE SHEETS ---
 @st.cache_resource
 def conectar_google_sheets():
     try:
         scope = [
-            "https://spreadsheets.google.com/feeds",
+            "https://www.googleapis.com/auth/spreadsheets",
             "https://www.googleapis.com/auth/drive",
         ]
+
+        creds = None
+
+        # Opción 1: Credenciales en formato TOML en Secrets ([gcp_service_account])
         if "gcp_service_account" in st.secrets:
-            # Convertir los secretos a diccionario
+            # Creamos una copia editable en limpio del diccionario de secretos
             creds_dict = dict(st.secrets["gcp_service_account"])
 
-            # Formatear la private_key para corregir saltos de línea
+            # 1. Limpiar y sanitizar la clave privada
             if "private_key" in creds_dict:
-                creds_dict["private_key"] = creds_dict[
-                    "private_key"
-                ].replace("\\n", "\n")
+                pk = str(creds_dict["private_key"]).strip()
+                # Eliminar comillas extras si se guardaron en los secrets
+                if (pk.startswith('"') and pk.endswith('"')) or (
+                    pk.startswith("'") and pk.endswith("'")
+                ):
+                    pk = pk[1:-1]
+                # Reemplazar caracteres de escape por saltos de línea reales
+                pk = pk.replace("\\n", "\n")
+                creds_dict["private_key"] = pk
 
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(
-                creds_dict, scope
+            # 2. Generar credenciales directamente desde el diccionario limpio
+            creds = Credentials.from_service_account_info(
+                creds_dict, scopes=scope
             )
-            client = gspread.authorize(creds)
-            spreadsheet_id = st.secrets["SPREADSHEET_ID"]
-            sheet = client.open_by_key(spreadsheet_id).sheet1
-            return sheet
-        else:
-            st.error("No se encontraron las credenciales en st.secrets.")
+
+        # Opción 2: Archivo JSON local (para desarrollo en tu PC)
+        elif os.path.exists("credentials.json"):
+            creds = Credentials.from_service_account_file(
+                "credentials.json", scopes=scope
+            )
+
+        if creds is None:
+            st.error(
+                "No se encontraron credenciales válidas en st.secrets ni en credentials.json."
+            )
             return None
+
+        client = gspread.authorize(creds)
+        spreadsheet_id = st.secrets["SPREADSHEET_ID"]
+        sheet = client.open_by_key(spreadsheet_id).sheet1
+        return sheet
+
     except Exception as e:
         st.error(f"Error al conectar con Google Sheets: {e}")
         return None
