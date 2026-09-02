@@ -117,8 +117,13 @@ def cargar_catalogos():
             for sheet_name in xls.sheet_names:
                 df = pd.read_excel(FILE_PATH, sheet_name=sheet_name)
                 for idx, row in df.iterrows():
-                    row_vals = [str(v).strip() for v in row.values if pd.notna(v)]
-                    if "PRODUCTO" in row_vals and "EQUIPO UTILIZADO" in row_vals:
+                    row_vals = [
+                        str(v).strip() for v in row.values if pd.notna(v)
+                    ]
+                    if (
+                        "PRODUCTO" in row_vals
+                        and "EQUIPO UTILIZADO" in row_vals
+                    ):
                         header_idx = idx
                         df_data = pd.read_excel(
                             FILE_PATH,
@@ -180,15 +185,22 @@ st.markdown("---")
 
 tab1, tab2 = st.tabs(["📝 Nuevo Registro", "⚙️ Gestionar / Modificar Registros"])
 
-# --- INICIALIZACIÓN DE VARIABLES EN SESSION_STATE PARA RESETEAR FORMULARIO ---
-def reiniciar_formulario():
+
+# --- FUNCIÓN DE RESETEO SEGURO ---
+def resetear_claves_form():
     st.session_state["form_fecha_p"] = datetime.date.today()
     st.session_state["form_lote"] = ""
     st.session_state["form_batch"] = ""
-    st.session_state["form_responsable_sel"] = lista_responsables[0] if lista_responsables else ""
+    st.session_state["form_responsable_sel"] = (
+        lista_responsables[0] if lista_responsables else ""
+    )
     st.session_state["form_responsable_text"] = ""
-    st.session_state["form_producto"] = lista_productos[0] if lista_productos else ""
-    st.session_state["form_equipo_sel"] = lista_equipos[0] if lista_equipos else ""
+    st.session_state["form_producto"] = (
+        lista_productos[0] if lista_productos else ""
+    )
+    st.session_state["form_equipo_sel"] = (
+        lista_equipos[0] if lista_equipos else ""
+    )
     st.session_state["form_equipo_text"] = ""
     st.session_state["form_brix"] = ""
     st.session_state["form_hora_inicio"] = datetime.time(8, 0)
@@ -201,8 +213,15 @@ def reiniciar_formulario():
     st.session_state["form_estado_area"] = "CONFORME"
     st.session_state["form_obs_area"] = ""
 
-if "form_lote" not in st.session_state:
-    reiniciar_formulario()
+
+# Si se activó la bandera de reseteo en la ejecución anterior, limpiamos antes de instanciar widgets
+if st.session_state.get("necesita_reset", False):
+    resetear_claves_form()
+    st.session_state["necesita_reset"] = False
+
+# Inicialización primaria si es primera carga
+if "form_fecha_p" not in st.session_state:
+    resetear_claves_form()
 
 # ---------------------------------------------------------
 # PESTAÑA 1: NUEVO REGISTRO
@@ -226,11 +245,15 @@ with tab1:
             )
         with col4:
             responsable_sel = st.selectbox(
-                "RESPONSABLE", options=lista_responsables, key="form_responsable_sel"
+                "RESPONSABLE",
+                options=lista_responsables,
+                key="form_responsable_sel",
             )
             if responsable_sel == "OTRO":
                 responsable_text = st.text_input(
-                    "Especifique Responsable", placeholder="Nombre completo", key="form_responsable_text"
+                    "Especifique Responsable",
+                    placeholder="Nombre completo",
+                    key="form_responsable_text",
                 )
                 responsable_final = responsable_text
             else:
@@ -240,14 +263,20 @@ with tab1:
         col5, col6, col_brix = st.columns([2, 2, 1])
 
         with col5:
-            producto = st.selectbox("PRODUCTO", options=lista_productos, key="form_producto")
+            producto = st.selectbox(
+                "PRODUCTO", options=lista_productos, key="form_producto"
+            )
         with col6:
             equipo_sel = st.selectbox(
-                "EQUIPO UTILIZADO", options=lista_equipos, key="form_equipo_sel"
+                "EQUIPO UTILIZADO",
+                options=lista_equipos,
+                key="form_equipo_sel",
             )
             if equipo_sel == "OTRO":
                 equipo_text = st.text_input(
-                    "Especifique Equipo", placeholder="Nombre del equipo", key="form_equipo_text"
+                    "Especifique Equipo",
+                    placeholder="Nombre del equipo",
+                    key="form_equipo_text",
                 )
                 equipo_final = equipo_text
             else:
@@ -261,9 +290,7 @@ with tab1:
         col7, col8, col9 = st.columns(3)
 
         with col7:
-            hora_inicio = st.time_input(
-                "HORA INICIO", key="form_hora_inicio"
-            )
+            hora_inicio = st.time_input("HORA INICIO", key="form_hora_inicio")
         with col8:
             hora_termino = st.time_input(
                 "HORA TÉRMINO", key="form_hora_termino"
@@ -293,13 +320,16 @@ with tab1:
 
         with col10:
             temp_equipo = st.number_input(
-                "TEMPERATURA  EQUIPO (°C)", step=0.5, format="%.1f", key="form_temp_equipo"
+                "TEMPERATURA  EQUIPO (°C)",
+                step=0.5,
+                format="%.1f",
+                key="form_temp_equipo",
             )
         with col11:
             vel_agitador = st.text_input(
                 "VELOCIDAD DEL AGITADOR (hz)/ BATIDORA/OTROS",
                 placeholder="Ej. 50 Hz / V2",
-                key="form_vel_agitador"
+                key="form_vel_agitador",
             )
 
         st.subheader("4. Conformidad y Observaciones")
@@ -309,7 +339,7 @@ with tab1:
             estado_obs = st.radio(
                 "ESTADO",
                 options=["CONFORME", "NO CONFORME", "OTRO (Texto Libre)"],
-                key="form_estado_obs"
+                key="form_estado_obs",
             )
 
         with col13:
@@ -317,14 +347,14 @@ with tab1:
                 obs_detalle = st.text_area(
                     "OBSERVACIÓN",
                     placeholder="Escriba aquí la observación personalizada...",
-                    key="form_obs_detalle"
+                    key="form_obs_detalle",
                 )
                 observacion_final = obs_detalle
             else:
                 obs_adicional = st.text_input(
                     "Detalle / Comentario adicional (Opcional)",
                     placeholder="Escriba detalles si aplica...",
-                    key="form_obs_adicional"
+                    key="form_obs_adicional",
                 )
                 observacion_final = (
                     f"{estado_obs} - {obs_adicional}".strip(" -")
@@ -339,18 +369,20 @@ with tab1:
             estado_area = st.radio(
                 "ESTADO ÁREA",
                 options=["CONFORME", "NO CONFORME"],
-                key="form_estado_area"
+                key="form_estado_area",
             )
 
         with col15:
             obs_area = st.text_input(
                 "Detalle / Comentario adicional (Opcional)",
                 placeholder="Escriba detalles si aplica...",
-                key="form_obs_area"
+                key="form_obs_area",
             )
 
         condicion_area_final = (
-            f"{estado_area} - {obs_area}".strip(" -") if obs_area else estado_area
+            f"{estado_area} - {obs_area}".strip(" -")
+            if obs_area
+            else estado_area
         )
 
         st.markdown("---")
@@ -381,7 +413,6 @@ with tab1:
                 registros_existentes = sheet.get_all_values()
                 siguiente_fila = len(registros_existentes) + 1
 
-                # Rango de A a N (14 columnas en total)
                 rango_insercion = f"A{siguiente_fila}:N{siguiente_fila}"
                 sheet.update(
                     range_name=rango_insercion,
@@ -393,9 +424,9 @@ with tab1:
                     f"✅ ¡Registro guardado exitosamente en la fila {siguiente_fila} de Google Sheets!"
                 )
                 st.cache_data.clear()
-                
-                # Reiniciar campos a cero
-                reiniciar_formulario()
+
+                # Marcamos bandera para resetear en el próximo refresco
+                st.session_state["necesita_reset"] = True
                 st.rerun()
 
             except Exception as err:
@@ -457,7 +488,8 @@ with tab2:
                                 value=datos_fila.get("EQUIPO UTILIZADO", ""),
                             )
                             e_brix = st.text_input(
-                                "BRIX (°Bx)", value=datos_fila.get("BRIX (°Bx)", "")
+                                "BRIX (°Bx)",
+                                value=datos_fila.get("BRIX (°Bx)", ""),
                             )
                             e_h_ini = st.text_input(
                                 "HORA INICIO",
