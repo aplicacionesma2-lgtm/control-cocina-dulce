@@ -6,3 +6,4 @@ openpyxl
 Pillow
 requests
 streamlit-qrcode-scanner
+qrcode
