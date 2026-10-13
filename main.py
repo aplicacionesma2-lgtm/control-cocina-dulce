@@ -13,8 +13,17 @@ import gspread
 from PIL import Image, ImageDraw, ImageFont
 import pandas as pd
 import streamlit as st
-from streamlit_qrcode_scanner import qrcode_scanner
-import qrcode
+
+try:
+  from streamlit_qrcode_scanner import qrcode_scanner
+except ImportError:
+  def qrcode_scanner(key=None):
+    return None
+
+try:
+  import qrcode
+except ImportError:
+  qrcode = None
 
 st.set_page_config(
     page_title="Control de Empaque QR — María Almenara",
@@ -394,16 +403,16 @@ def calcular_avance(
   return df.sort_values("pct_avance")
 
 
-def obtener_componentes_producto(codigo_prod: str, cajas: float, archivo_subido=None) -> pd.DataFrame:
-  """Extrae los componentes usando los nombres exactos de las columnas de tu Excel de Receta."""
+def obtener_componentes_producto(codigo_prod: str, cajas: float) -> pd.DataFrame:
+  if "archivo_bytes_actual" not in st.session_state:
+    return pd.DataFrame()
+
   try:
-    if archivo_subido is not None:
-      xl = pd.ExcelFile(archivo_subido)
-      if "Receta" not in xl.sheet_names:
-        return pd.DataFrame()
-      df_receta = xl.parse("Receta")
-    else:
+    buffer_bytes = io.BytesIO(st.session_state["archivo_bytes_actual"])
+    xl = pd.ExcelFile(buffer_bytes)
+    if "Receta" not in xl.sheet_names:
       return pd.DataFrame()
+    df_receta = xl.parse("Receta")
   except Exception:
     return pd.DataFrame()
 
@@ -411,12 +420,23 @@ def obtener_componentes_producto(codigo_prod: str, cajas: float, archivo_subido=
     return pd.DataFrame()
 
   df_receta.columns = [str(c).strip().upper() for c in df_receta.columns]
-  
   col_codigo = 'CÓDIGO' if 'CÓDIGO' in df_receta.columns else df_receta.columns[0]
-  df_receta['__COD_LIMPIO'] = df_receta[col_codigo].fillna('').astype(str).str.strip().str.upper()
-  codigo_buscado = str(codigo_prod).strip().upper()
+  
+  def limpiar_val(val):
+    s = str(val).strip().upper()
+    if s.endswith(".0"):
+      s = s[:-2]
+    if s in ["NAN", "NONE", "", "NAT"]:
+      return ""
+    return s
+
+  df_receta['__COD_LIMPIO'] = df_receta[col_codigo].apply(limpiar_val)
+  codigo_buscado = limpiar_val(codigo_prod)
 
   matches = df_receta[df_receta['__COD_LIMPIO'] == codigo_buscado]
+  if matches.empty:
+    matches = df_receta[df_receta['__COD_LIMPIO'].str.contains(codigo_buscado, na=False)]
+
   if matches.empty:
     return pd.DataFrame()
 
@@ -427,9 +447,12 @@ def obtener_componentes_producto(codigo_prod: str, cajas: float, archivo_subido=
   resultados = []
   for _, row in matches.iterrows():
     c_comp = str(row.get(col_cod_comp, '')).strip()
+    if c_comp.endswith(".0"):
+      c_comp = c_comp[:-2]
+      
     d_comp = str(row.get(col_desc_comp, c_comp)).strip()
     
-    if not c_comp or c_comp.upper() in ['NAN', 'NONE', '', 'NAT']:
+    if not c_comp or c_comp.upper() in ['NAN', 'NONE', '', 'NAT'] or c_comp.upper() == codigo_buscado:
       continue
 
     cant_base = 1.0
@@ -490,7 +513,7 @@ def calcular_componentes_factor_m(pedido_df: pd.DataFrame, archivo_subido=None):
       how="inner",
   )
 
-  # Usar directamente el requerimiento real sin multiplicar por la cantidad de la receta
+  # Tomar directamente el requerimiento del padre sin multiplicar por la cantidad de receta
   df_merged["REQ_COMPONENTE"] = df_merged["REQ_REAL"]
 
   s_cod = df_merged[col_cod_comp]
@@ -567,11 +590,12 @@ def generar_imagen_etiqueta(codigo, producto, cajas, unidades, umi, operario):
   d.text((20, 200), f"OPERARIO: {operario}", fill="gray")
   d.text((20, 230), f"FECHA: {ahora_lima().strftime('%Y-%m-%d %H:%M')}", fill="gray")
 
-  qr = qrcode.QRCode(box_size=4, border=1)
-  qr.add_data(str(codigo))
-  qr.make(fit=True)
-  qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
-  img.paste(qr_img, (420, 210))
+  if qrcode is not None:
+    qr = qrcode.QRCode(box_size=4, border=1)
+    qr.add_data(str(codigo))
+    qr.make(fit=True)
+    qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+    img.paste(qr_img, (420, 210))
 
   buf = io.BytesIO()
   img.save(buf, format="PNG")
@@ -702,11 +726,7 @@ try:
         
         df_comp_prod = pd.DataFrame()
         if "archivo_bytes_actual" in st.session_state:
-          df_comp_prod = obtener_componentes_producto(
-              codigo_actual, 
-              cajas,
-              io.BytesIO(st.session_state["archivo_bytes_actual"])
-          )
+          df_comp_prod = obtener_componentes_producto(codigo_actual, cajas)
 
         if not df_comp_prod.empty:
           for _, r in df_comp_prod.iterrows():
